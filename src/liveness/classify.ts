@@ -58,6 +58,12 @@ const APPLY_BUTTON_PATTERNS: RegExp[] = [
   /<button[^>]*>[\s\n]*(?:apply|bewerben|postuler|candidater)\b/i,
   /<a[^>]*>[\s\n]*(?:apply now|jetzt bewerben|postuler maintenant)\b/i,
   /"canApply"\s*:\s*true\b/i,
+  // ATS JSON payload signatures — presence implies the job is still on the public board.
+  /"applyUrl"\s*:\s*"https?:\/\//i,
+  /"hostedUrl"\s*:\s*"https?:\/\/jobs\.lever\.co\//i,
+  // Greenhouse payload has `absolute_url` + `first_published`; former may point to the
+  // customer's own careers domain (not greenhouse.io) via the `gh_jid` query param.
+  /"absolute_url"\s*:\s*"https?:\/\/[^"]+"[\s\S]*"first_published"/i,
 ];
 
 const MIN_CONTENT_CHARS = 300;

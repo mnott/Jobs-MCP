@@ -49,13 +49,17 @@ Add to `~/.claude.json` → `mcpServers`:
 "jobs": {
   "type": "stdio",
   "command": "node",
-  "args": ["/Users/i052341/dev/ai/jobs-mcp/dist/index.js"],
+  "args": ["/absolute/path/to/jobs-mcp/dist/index.js"],
   "env": {
-    "SL_API_URL": "https://jobs.seriousletter.com",
-    "SL_API_TOKEN": "…"
+    "SL_API_URL": "https://your-seriousletter-host.example",
+    "SL_API_TOKEN": "…",
+    "ANTHROPIC_API_KEY": "…"
   }
 }
 ```
 
-`SL_API_TOKEN` is only required for tools that persist results in SL. Pure
-scrape/liveness/unwrap tools don't need it.
+- `SL_API_TOKEN` is only needed by tools that read from or persist to
+  SeriousLetter (`jm_orp_sync_job`, `jm_evaluate`). Pure scrape /
+  liveness / unwrap tools run without it.
+- `ANTHROPIC_API_KEY` is only needed by `jm_evaluate`. Each invocation
+  makes one Opus 4.7 call.

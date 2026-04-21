@@ -24,6 +24,9 @@ import { linkedinTemplate } from "./templates/linkedin.js";
 import { glassdoorTemplate } from "./templates/glassdoor.js";
 import { teamtailorTemplate } from "./templates/teamtailor.js";
 import { workdayTemplate } from "./templates/workday.js";
+import { leverTemplate } from "./templates/lever.js";
+import { greenhouseTemplate } from "./templates/greenhouse.js";
+import { ashbyTemplate } from "./templates/ashby.js";
 
 /** All registered site templates. Playwright-based templates use a lazy `playwright` import. */
 const templates: SiteTemplate[] = [
@@ -31,6 +34,9 @@ const templates: SiteTemplate[] = [
   glassdoorTemplate,
   teamtailorTemplate,
   workdayTemplate,
+  leverTemplate,
+  greenhouseTemplate,
+  ashbyTemplate,
 ];
 
 /** Find the template that matches a URL */
