@@ -16,6 +16,9 @@ import { z } from "zod";
 import { scrapeJob, listTemplates } from "./scraper.js";
 import { classifyLiveness } from "./liveness/classify.js";
 import { unwrapSync, unwrapAsync } from "./unwrap/index.js";
+import * as orp from "./orp/client.js";
+import * as orpSearch from "./orp/search.js";
+import * as sl from "./sl/client.js";
 
 function textResponse(data: unknown) {
   const text = typeof data === "string" ? data : JSON.stringify(data, null, 2);
@@ -47,6 +50,13 @@ const server = new McpServer(
       "| `jm_liveness` | Classify a URL or supplied HTML as active / expired / uncertain. |",
       "| `jm_unwrap` | Unwrap a tracker URL (Google Alerts / LinkedIn /comm/ / Experteer) to the real JD URL. |",
       "| `jm_list_templates` | List registered scraping templates. |",
+      "| `jm_orp_check_session` | Check job-room.ch (Swiss RAV/ORP) browser session. |",
+      "| `jm_orp_list_efforts` | List proof records (Arbeitsbemühungen). |",
+      "| `jm_orp_get_proof` | Get a single proof record. |",
+      "| `jm_orp_submit_effort` | Submit a work effort. |",
+      "| `jm_orp_sync_job` | Copy an SL job → job-room.ch work effort. |",
+      "| `jm_orp_search` | Search job-room.ch public job ads (no auth). |",
+      "| `jm_orp_get_jobroom_job` | Fetch a single job-room.ch ad (no auth). |",
       "",
       "### Typical Flow",
       "",
@@ -112,6 +122,212 @@ server.tool(
       }
       const result = classifyLiveness({ url, body: effectiveBody, status: effectiveStatus });
       return textResponse(result);
+    } catch (err) {
+      return errorResponse(err);
+    }
+  },
+);
+
+// =====================================================================
+// job-room.ch (ORP / NPA) tools — browser-proxy + public search
+//
+// Auth-required tools (list/get/submit/sync) proxy through Chrome via
+// macOS AppleScript because job-room.ch's session uses httpOnly cookies
+// from idp.arbeit.swiss SSO that can't be replicated externally.
+// Public-search tools (jm_orp_search / jm_orp_get_jobroom_job) do not
+// require a Chrome session — they hit the open Angular backend.
+// =====================================================================
+
+server.tool(
+  "jm_orp_check_session",
+  "Check whether Chrome has an active job-room.ch session. Returns userId + user info if authenticated.",
+  {},
+  async () => {
+    try {
+      const session = await orp.checkSession();
+      if (!session.ok) {
+        return textResponse({
+          authenticated: false,
+          message: session.error || "Not logged in. Please open job-room.ch in Chrome and log in.",
+        });
+      }
+      return textResponse({
+        authenticated: true,
+        userId: session.userId,
+        user: session.user,
+      });
+    } catch (err) {
+      return errorResponse(err);
+    }
+  },
+);
+
+server.tool(
+  "jm_orp_list_efforts",
+  "List the logged-in user's proof-of-job-search records (Arbeitsbemühungen) on job-room.ch. Each record contains work efforts for one control period.",
+  {
+    page: z.number().int().optional().describe("Page number (default 0)"),
+  },
+  async ({ page }) => {
+    try {
+      return textResponse(await orp.listProofs(undefined, page));
+    } catch (err) {
+      return errorResponse(err);
+    }
+  },
+);
+
+server.tool(
+  "jm_orp_get_proof",
+  "Get a single job-room.ch proof record with all of its work efforts. Use jm_orp_list_efforts first to discover the proof_id.",
+  {
+    proof_id: z.string().describe("UUID of the proof record"),
+  },
+  async ({ proof_id }) => {
+    try {
+      return textResponse(await orp.getProof(proof_id));
+    } catch (err) {
+      return errorResponse(err);
+    }
+  },
+);
+
+server.tool(
+  "jm_orp_submit_effort",
+  "Submit a new work effort (Arbeitsbemühung) to job-room.ch. Requires an active Chrome session on job-room.ch.",
+  {
+    occupation: z.string().describe("Position title"),
+    apply_date: z.string().describe("YYYY-MM-DD"),
+    company_name: z.string(),
+    company_street: z.string().optional(),
+    company_house_number: z.string().optional(),
+    company_postal_code: z.string().optional(),
+    company_city: z.string().optional(),
+    company_country: z.string().optional().describe("ISO country code (default CH)"),
+    contact_person: z.string().optional(),
+    email: z.string().optional(),
+    form_url: z.string().optional(),
+    phone: z.string().optional(),
+    apply_channel: z
+      .enum(["ELECTRONIC", "MAIL", "PERSONAL", "PHONE"])
+      .optional()
+      .describe("How the application was sent (default ELECTRONIC)"),
+    apply_status: z
+      .enum(["PENDING", "EMPLOYED", "REJECTED", "INTERVIEW"])
+      .optional()
+      .describe("Effort status (default PENDING)"),
+    full_time: z.boolean().optional(),
+  },
+  async (params) => {
+    try {
+      const data: orp.CreateWorkEffortData = {
+        occupation: params.occupation,
+        applyDate: params.apply_date,
+        companyName: params.company_name,
+        companyStreet: params.company_street,
+        companyHouseNumber: params.company_house_number,
+        companyPostalCode: params.company_postal_code,
+        companyCity: params.company_city,
+        companyCountry: params.company_country || "CH",
+        contactPerson: params.contact_person,
+        email: params.email,
+        formUrl: params.form_url,
+        phone: params.phone,
+        applyChannelTypes: [params.apply_channel || "ELECTRONIC"],
+        applyStatus: [params.apply_status || "PENDING"],
+        fullTimeJob: params.full_time !== false,
+      };
+      const result = await orp.createWorkEffort(data);
+      return textResponse({
+        message: `Submitted "${params.occupation}" at ${params.company_name} to job-room.ch.`,
+        result,
+      });
+    } catch (err) {
+      return errorResponse(err);
+    }
+  },
+);
+
+server.tool(
+  "jm_orp_sync_job",
+  "Fetch a SeriousLetter job by UUID (via the SL external API), map its fields to job-room.ch work-effort shape, and submit it. Requires SL_API_TOKEN env + an active Chrome job-room.ch session.",
+  {
+    job_uuid: z.string().describe("UUID of the SeriousLetter job to sync"),
+    apply_date: z.string().optional().describe("Override apply date YYYY-MM-DD (defaults to job's applied_date or today)"),
+  },
+  async ({ job_uuid, apply_date }) => {
+    try {
+      const job = await sl.getJob(job_uuid);
+      const data = orp.slJobToWorkEffort(job, apply_date);
+      if (!data.companyName || !data.occupation) {
+        return errorResponse(
+          new Error(
+            `Job ${job_uuid} missing required fields. company="${data.companyName}", title="${data.occupation}"`,
+          ),
+        );
+      }
+      const result = await orp.createWorkEffort(data);
+      return textResponse({
+        message: `Synced "${data.occupation}" at ${data.companyName} to job-room.ch.`,
+        mapped: data,
+        result,
+      });
+    } catch (err) {
+      return errorResponse(err);
+    }
+  },
+);
+
+server.tool(
+  "jm_orp_search",
+  "Search job-room.ch public job-ad API (no auth required). Filters include keywords, Swiss canton codes, company, workload %, etc.",
+  {
+    keywords: z.array(z.string()).optional(),
+    canton_codes: z
+      .array(z.string())
+      .optional()
+      .describe("2-letter canton codes (e.g., ZH, VD, VS)"),
+    company_name: z.string().optional(),
+    workload_min: z.number().int().optional().describe("Minimum workload %"),
+    workload_max: z.number().int().optional().describe("Maximum workload %"),
+    permanent: z.boolean().optional(),
+    online_since: z.number().int().optional().describe("Days since posted"),
+    language: z.string().optional().describe("ISO language code (de/fr/it/en)"),
+    page: z.number().int().optional(),
+    size: z.number().int().optional(),
+  },
+  async (params) => {
+    try {
+      const result = await orpSearch.searchJobs(
+        {
+          keywords: params.keywords,
+          cantonCodes: params.canton_codes,
+          companyName: params.company_name,
+          workloadPercentageMin: params.workload_min,
+          workloadPercentageMax: params.workload_max,
+          permanent: params.permanent,
+          onlineSince: params.online_since,
+          language: params.language,
+        },
+        params.page ?? 0,
+        params.size ?? 20,
+      );
+      return textResponse(result);
+    } catch (err) {
+      return errorResponse(err);
+    }
+  },
+);
+
+server.tool(
+  "jm_orp_get_jobroom_job",
+  "Get full details of a job-room.ch job ad by its UUID. No auth required.",
+  {
+    job_id: z.string().describe("job-room.ch job-ad UUID"),
+  },
+  async ({ job_id }) => {
+    try {
+      return textResponse(await orpSearch.getJob(job_id));
     } catch (err) {
       return errorResponse(err);
     }
