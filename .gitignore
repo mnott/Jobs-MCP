@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# Editor directories and files
+.DS_Store
+.idea/
+.vscode/
+*.sw?
+
+# TypeScript incremental compilation info
+*.tsbuildinfo
+
+# Session notes and task tracking (local only)
+Notes/
+tasks/
