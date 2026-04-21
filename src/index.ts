@@ -19,6 +19,7 @@ import { unwrapSync, unwrapAsync } from "./unwrap/index.js";
 import * as orp from "./orp/client.js";
 import * as orpSearch from "./orp/search.js";
 import * as sl from "./sl/client.js";
+import { evaluate as evaluateAG } from "./evaluator/aG.js";
 
 function textResponse(data: unknown) {
   const text = typeof data === "string" ? data : JSON.stringify(data, null, 2);
@@ -57,6 +58,7 @@ const server = new McpServer(
       "| `jm_orp_sync_job` | Copy an SL job → job-room.ch work effort. |",
       "| `jm_orp_search` | Search job-room.ch public job ads (no auth). |",
       "| `jm_orp_get_jobroom_job` | Fetch a single job-room.ch ad (no auth). |",
+      "| `jm_evaluate` | Run the A-G evaluator (B/E/G) on an SL job using the active CV. |",
       "",
       "### Typical Flow",
       "",
@@ -328,6 +330,77 @@ server.tool(
   async ({ job_id }) => {
     try {
       return textResponse(await orpSearch.getJob(job_id));
+    } catch (err) {
+      return errorResponse(err);
+    }
+  },
+);
+
+// =====================================================================
+// A-G evaluator (phase-1 slice: blocks B / E / G)
+//
+// Needs ANTHROPIC_API_KEY + SL_API_TOKEN in the MCP env. Single Anthropic
+// call per evaluation (Opus 4.7). If `save_to_sl=true`, the result is
+// POSTed as a note on the SL job.
+// =====================================================================
+
+server.tool(
+  "jm_evaluate",
+  "Evaluate an SL job against the active user's base CV. Produces blocks B (CV match), E (personalization plan), and G (posting legitimacy). Requires ANTHROPIC_API_KEY + SL_API_TOKEN in env. Cost: one Opus 4.7 call per run.",
+  {
+    job_uuid: z.string().describe("UUID of the SeriousLetter job to evaluate"),
+    profile_uuid: z
+      .string()
+      .optional()
+      .describe("UUID of the base CV profile to use (defaults to the first is_base profile)"),
+    blocks: z
+      .array(z.enum(["B", "E", "G"]))
+      .optional()
+      .describe("Which blocks to produce (default: B, E, G)"),
+    save_to_sl: z
+      .boolean()
+      .optional()
+      .describe("If true, attach the evaluation as a note on the job (default false)"),
+  },
+  async ({ job_uuid, profile_uuid, blocks, save_to_sl }) => {
+    try {
+      const job = await sl.getJob(job_uuid);
+
+      // Resolve profile
+      let profile: Record<string, unknown>;
+      if (profile_uuid) {
+        profile = await sl.getProfile(profile_uuid);
+      } else {
+        const list = (await sl.listProfiles()) as { profiles?: Array<Record<string, unknown>> };
+        const items = list.profiles ?? [];
+        const base =
+          items.find((p) => p.is_base === true) ?? items[0];
+        if (!base || !base.uuid) {
+          return errorResponse(
+            new Error("No CV profile found for the active SL user. Provide profile_uuid explicitly."),
+          );
+        }
+        profile = await sl.getProfile(base.uuid as string);
+      }
+
+      const result = await evaluateAG({ job, profile, focusBlocks: blocks });
+
+      let note: Record<string, unknown> | undefined;
+      if (save_to_sl) {
+        note = await sl.addNote(
+          job_uuid,
+          `# AI Evaluation (Jobs MCP — blocks ${result.blocks.join(", ")})\n\n${result.markdown}`,
+          "ai-evaluation",
+        );
+      }
+
+      return textResponse({
+        model: result.model,
+        blocks: result.blocks,
+        usage: result.usage,
+        saved: save_to_sl ? note : undefined,
+        markdown: result.markdown,
+      });
     } catch (err) {
       return errorResponse(err);
     }

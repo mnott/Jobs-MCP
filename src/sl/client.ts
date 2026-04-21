@@ -62,3 +62,25 @@ export async function slRequest<T = unknown>(
 export async function getJob(uuid: string): Promise<Record<string, unknown>> {
   return slRequest<Record<string, unknown>>("GET", `/api/v1/jobs/${uuid}`);
 }
+
+/** GET /api/v1/profiles/{uuid} — full CV content. */
+export async function getProfile(uuid: string): Promise<Record<string, unknown>> {
+  return slRequest<Record<string, unknown>>("GET", `/api/v1/profiles/${uuid}`);
+}
+
+/** GET /api/v1/profiles — list profiles for the active user. */
+export async function listProfiles(): Promise<Record<string, unknown>> {
+  return slRequest<Record<string, unknown>>("GET", `/api/v1/profiles`);
+}
+
+/** POST /api/v1/jobs/{uuid}/notes — attach a note to a job. */
+export async function addNote(
+  jobUuid: string,
+  text: string,
+  category?: string,
+): Promise<Record<string, unknown>> {
+  return slRequest<Record<string, unknown>>("POST", `/api/v1/jobs/${jobUuid}/notes`, {
+    text,
+    category: category ?? "ai-evaluation",
+  });
+}
