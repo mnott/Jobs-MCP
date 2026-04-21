@@ -123,12 +123,13 @@ server.tool(
   },
   async ({ url }) => {
     try {
-      const job = await scrapeJob(url);
-      // Also classify liveness on the scraped body
+      const { job, rawHtml, status } = await scrapeJob(url);
+      // Classify liveness against the full HTML so apply buttons / gating attributes are visible,
+      // with a fallback to the extracted description if the HTML came up empty.
       const liveness = classifyLiveness({
         url,
-        body: job.description || "",
-        // No status — scrapeJob doesn't expose it currently
+        body: rawHtml || job.description || "",
+        status,
       });
       return textResponse({ ...job, liveness });
     } catch (err) {

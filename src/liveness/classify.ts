@@ -49,12 +49,13 @@ const EXPIRED_URL_PATTERNS: RegExp[] = [
   /\/jobs\/?$/i, // same for generic jobs index
 ];
 
-// Apply-button signals (presence of any → strong active signal)
+// Apply-button signals (presence of any → strong active signal).
+// Conservative — attribute or innerText must explicitly reference applying.
 const APPLY_BUTTON_PATTERNS: RegExp[] = [
   /\baria-label=["'][^"']*(?:apply|bewerben|postuler|candidater)[^"']*["']/i,
-  /\b(?:id|class|data-test)=["'][^"']*(?:apply-button|jobs-apply|easy-apply|postuler-btn)[^"']*["']/i,
-  /<button[^>]*>\s*(?:apply|bewerben|postuler|candidater)\b/i,
-  /<a[^>]*>\s*(?:apply now|jetzt bewerben|postuler maintenant)\b/i,
+  /\b(?:id|class|data-test|data-modal)=["'][^"']*(?:apply-button|jobs-apply|easy-apply|topbar-apply|postuler-btn|apply-modal|apply-link)[^"']*["']/i,
+  /<button[^>]*>[\s\n]*(?:apply|bewerben|postuler|candidater)\b/i,
+  /<a[^>]*>[\s\n]*(?:apply now|jetzt bewerben|postuler maintenant)\b/i,
 ];
 
 const MIN_CONTENT_CHARS = 300;

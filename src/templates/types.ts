@@ -18,6 +18,12 @@ export type ScrapedJob = {
   extra?: Record<string, string>;
 };
 
+export type ScrapeResult = {
+  job: ScrapedJob;
+  rawHtml: string;
+  status: number;
+};
+
 export type FieldExtractor = {
   selector?: string;
   regex?: string;

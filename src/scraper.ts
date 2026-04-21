@@ -11,7 +11,7 @@
  * fails — keeps Jobs MCP runnable without a headless-Chromium install.
  */
 
-import type { HttpTemplate, SiteTemplate, ScrapedJob, FieldExtractor } from "./templates/types.js";
+import type { HttpTemplate, SiteTemplate, ScrapedJob, ScrapeResult, FieldExtractor } from "./templates/types.js";
 import { linkedinTemplate } from "./templates/linkedin.js";
 
 /** All registered site templates (phase 1: LinkedIn only; Glassdoor + others land next). */
@@ -31,8 +31,8 @@ export function listTemplates(): Array<{ name: string; pattern: string; method: 
   }));
 }
 
-/** Scrape a job listing URL using the matching template */
-export async function scrapeJob(url: string): Promise<ScrapedJob> {
+/** Scrape a job listing URL using the matching template. Returns job + raw HTML + status so callers can run liveness or debug. */
+export async function scrapeJob(url: string): Promise<ScrapeResult> {
   const template = findTemplate(url);
   if (!template) {
     const available = templates.map((t) => t.name).join(", ");
@@ -50,7 +50,7 @@ export async function scrapeJob(url: string): Promise<ScrapedJob> {
   return scrapeHttp(template, url);
 }
 
-async function scrapeHttp(template: HttpTemplate, url: string): Promise<ScrapedJob> {
+async function scrapeHttp(template: HttpTemplate, url: string): Promise<ScrapeResult> {
   const response = await fetch(url, {
     headers: template.headers ?? {},
     redirect: "follow",
@@ -81,7 +81,7 @@ async function scrapeHttp(template: HttpTemplate, url: string): Promise<ScrapedJ
     if (value) extra[key] = value;
   }
 
-  return {
+  const job: ScrapedJob = {
     title,
     company,
     location,
@@ -90,6 +90,7 @@ async function scrapeHttp(template: HttpTemplate, url: string): Promise<ScrapedJ
     templateName: template.name,
     extra,
   };
+  return { job, rawHtml: html, status: response.status };
 }
 
 function extractField(html: string, extractor: FieldExtractor): string | undefined {
