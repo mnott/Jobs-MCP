@@ -77,6 +77,7 @@ const server = new McpServer(
       "- **Greenhouse** (API) — `boards-api.greenhouse.io/v1/boards/{co}/jobs/{id}`.",
       "- **Ashby** (API) — company board + UUID filter.",
       "- **SmartRecruiters** (API) — `/v1/companies/{co}/postings/{id}`, all 4 JD sections.",
+      "- **Experteer** (HTTP, teaser) — og:title + og:description + URL-slug location. Full JD is paywalled.",
       "",
       "Taleo, Avature, SuccessFactors, JobUp, BambooHR land next.",
     ].join("\n"),
@@ -414,21 +415,35 @@ server.tool(
 
 server.tool(
   "jm_scrape",
-  "Scrape a job URL using the matching site template. Returns structured job data (title, company, location, description) plus a liveness verdict (active/expired/uncertain). Templates available: see `jm_list_templates`.",
+  "Scrape a job URL using the matching site template. Auto-unwraps tracker URLs (Google Alerts, LinkedIn /comm/, Experteer) before scraping. Returns structured job data + liveness. Templates: see `jm_list_templates`.",
   {
-    url: z.string().url().describe("The job posting URL"),
+    url: z.string().url().describe("The job posting URL (tracker URLs ok — auto-unwrapped)"),
+    skip_unwrap: z
+      .boolean()
+      .optional()
+      .describe("Disable the auto-unwrap step (default false)"),
   },
-  async ({ url }) => {
+  async ({ url, skip_unwrap }) => {
     try {
-      const { job, rawHtml, status } = await scrapeJob(url);
-      // Classify liveness against the full HTML so apply buttons / gating attributes are visible,
-      // with a fallback to the extracted description if the HTML came up empty.
+      let targetUrl = url;
+      let unwrap: { original: string; unwrapped: string; kind: string } | undefined;
+      if (!skip_unwrap) {
+        // Try sync unwrap first (Google Alerts, LinkedIn /comm/, Experteer, UTM strip).
+        // Skip async/HEAD here to keep jm_scrape fast; users can call jm_unwrap with
+        // follow_redirects=true explicitly when they need the network roundtrip.
+        const u = unwrapSync(url);
+        if (u.kind !== "none" && u.unwrapped !== url) {
+          unwrap = { original: u.original, unwrapped: u.unwrapped, kind: u.kind };
+          targetUrl = u.unwrapped;
+        }
+      }
+      const { job, rawHtml, status } = await scrapeJob(targetUrl);
       const liveness = classifyLiveness({
-        url,
+        url: targetUrl,
         body: rawHtml || job.description || "",
         status,
       });
-      return textResponse({ ...job, liveness });
+      return textResponse({ ...job, liveness, ...(unwrap ? { unwrap } : {}) });
     } catch (err) {
       return errorResponse(err);
     }

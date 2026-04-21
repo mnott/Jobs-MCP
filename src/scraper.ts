@@ -28,6 +28,7 @@ import { leverTemplate } from "./templates/lever.js";
 import { greenhouseTemplate } from "./templates/greenhouse.js";
 import { ashbyTemplate } from "./templates/ashby.js";
 import { smartRecruitersTemplate } from "./templates/smartrecruiters.js";
+import { experteerTemplate } from "./templates/experteer.js";
 
 /** All registered site templates. Playwright-based templates use a lazy `playwright` import. */
 const templates: SiteTemplate[] = [
@@ -39,6 +40,7 @@ const templates: SiteTemplate[] = [
   greenhouseTemplate,
   ashbyTemplate,
   smartRecruitersTemplate,
+  experteerTemplate,
 ];
 
 /** Find the template that matches a URL */
