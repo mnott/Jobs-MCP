@@ -24,7 +24,7 @@ export type UnwrapResult = {
 
 const GOOGLE_ALERT_RE = /^https?:\/\/(?:www\.)?google\.com\/url\?/i;
 const LINKEDIN_COMM_RE = /linkedin\.com\/comm\/jobs\/view\/(\d+)/i;
-const EXPERTEER_RE = /^https?:\/\/link\.experteer\.ch\/c\//i;
+const EXPERTEER_RE = /^https?:\/\/link\.experteer\.[a-z]+\//i;
 
 /** Strip known tracking query params (UTM and friends) */
 function stripTrackingParams(urlStr: string): string {
@@ -57,7 +57,30 @@ function stripTrackingParams(urlStr: string): string {
   }
 }
 
-/** Synchronous unwrap attempt — covers Google Alerts + LinkedIn /comm/ */
+/**
+ * Experteer /u/nrd.php tracker embeds the destination as
+ *   d=base64(host)|base64(path)|base64(locator)|...
+ * in URL-encoded form. Sync-decode the first two pipe-segments to
+ * reconstruct the target, no HTTP needed.
+ */
+function unwrapExperteerSync(urlStr: string): string | null {
+  try {
+    const u = new URL(urlStr);
+    if (!/link\.experteer\.[a-z]+/i.test(u.hostname)) return null;
+    const d = u.searchParams.get("d");
+    if (!d) return null;
+    const parts = d.split("|");
+    if (parts.length < 2) return null;
+    const host = Buffer.from(parts[0], "base64").toString("utf8");
+    const path = Buffer.from(parts[1], "base64").toString("utf8");
+    if (!/^[a-z0-9.-]+$/i.test(host) || !path.startsWith("/")) return null;
+    return `https://${host}${path}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Synchronous unwrap attempt — covers Google Alerts + LinkedIn /comm/ + Experteer /u/nrd.php. */
 export function unwrapSync(urlStr: string): UnwrapResult {
   // Google Alerts wrapper: extract ?q=
   if (GOOGLE_ALERT_RE.test(urlStr)) {
@@ -84,6 +107,12 @@ export function unwrapSync(urlStr: string): UnwrapResult {
       unwrapped: `https://www.linkedin.com/jobs/view/${jobId}`,
       kind: "linkedin-comm",
     };
+  }
+
+  // Experteer: decode the base64-packed `d=` param if present.
+  const exp = unwrapExperteerSync(urlStr);
+  if (exp) {
+    return { original: urlStr, unwrapped: exp, kind: "experteer" };
   }
 
   // Generic: strip tracking params only
