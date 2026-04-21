@@ -51,11 +51,13 @@ const EXPIRED_URL_PATTERNS: RegExp[] = [
 
 // Apply-button signals (presence of any → strong active signal).
 // Conservative — attribute or innerText must explicitly reference applying.
+// Also catches JSON-API signals (`"canApply": true`) from ATS payloads.
 const APPLY_BUTTON_PATTERNS: RegExp[] = [
   /\baria-label=["'][^"']*(?:apply|bewerben|postuler|candidater)[^"']*["']/i,
   /\b(?:id|class|data-test|data-modal)=["'][^"']*(?:apply-button|jobs-apply|easy-apply|topbar-apply|postuler-btn|apply-modal|apply-link)[^"']*["']/i,
   /<button[^>]*>[\s\n]*(?:apply|bewerben|postuler|candidater)\b/i,
   /<a[^>]*>[\s\n]*(?:apply now|jetzt bewerben|postuler maintenant)\b/i,
+  /"canApply"\s*:\s*true\b/i,
 ];
 
 const MIN_CONTENT_CHARS = 300;

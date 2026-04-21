@@ -28,6 +28,8 @@ export type FieldExtractor = {
   selector?: string;
   regex?: string;
   metaTag?: string;
+  /** Dot-path into a JSON-LD JobPosting block (e.g., "title", "hiringOrganization.name", "jobLocation.address.addressLocality"). */
+  jsonLdPath?: string;
   transform?: { pattern: string; replacement: string };
 };
 
@@ -46,6 +48,19 @@ export type HttpTemplate = {
   };
 };
 
+export type ApiTemplate = {
+  name: string;
+  urlPattern: RegExp;
+  method: "api";
+  fields: Record<string, FieldExtractor>; // unused — apiExtract handles everything
+  /** Turn a public URL into the JSON-API URL to fetch. */
+  apiUrl: (url: string) => string;
+  /** Parse the JSON payload into structured job fields. */
+  apiExtract: (json: unknown, url: string) => Partial<ScrapedJob>;
+  /** Optional fetch init (headers, method, body) for the API call. */
+  fetchInit?: (url: string) => RequestInit;
+};
+
 export type PlaywrightTemplate = {
   name: string;
   urlPattern: RegExp;
@@ -54,4 +69,4 @@ export type PlaywrightTemplate = {
   playwrightExtract: (page: Page, url: string) => Promise<Partial<ScrapedJob>>;
 };
 
-export type SiteTemplate = HttpTemplate | PlaywrightTemplate;
+export type SiteTemplate = HttpTemplate | ApiTemplate | PlaywrightTemplate;
