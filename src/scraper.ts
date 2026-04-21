@@ -11,11 +11,19 @@
  * fails — keeps Jobs MCP runnable without a headless-Chromium install.
  */
 
-import type { HttpTemplate, SiteTemplate, ScrapedJob, ScrapeResult, FieldExtractor } from "./templates/types.js";
+import type {
+  HttpTemplate,
+  PlaywrightTemplate,
+  SiteTemplate,
+  ScrapedJob,
+  ScrapeResult,
+  FieldExtractor,
+} from "./templates/types.js";
 import { linkedinTemplate } from "./templates/linkedin.js";
+import { glassdoorTemplate } from "./templates/glassdoor.js";
 
-/** All registered site templates (phase 1: LinkedIn only; Glassdoor + others land next). */
-const templates: SiteTemplate[] = [linkedinTemplate];
+/** All registered site templates. Playwright-based templates use a lazy `playwright` import. */
+const templates: SiteTemplate[] = [linkedinTemplate, glassdoorTemplate];
 
 /** Find the template that matches a URL */
 export function findTemplate(url: string): SiteTemplate | undefined {
@@ -42,12 +50,50 @@ export async function scrapeJob(url: string): Promise<ScrapeResult> {
   }
 
   if (template.method === "playwright") {
-    throw new Error(
-      `Template "${template.name}" requires Playwright — not yet wired in Jobs MCP phase 1.`,
-    );
+    return scrapePlaywright(template, url);
   }
 
   return scrapeHttp(template, url);
+}
+
+async function scrapePlaywright(template: PlaywrightTemplate, url: string): Promise<ScrapeResult> {
+  // Dynamic import so `playwright` stays an optional dependency.
+  // If the user hasn't installed it, throw a friendly error with install hints.
+  type PlaywrightModule = typeof import("playwright");
+  let pw: PlaywrightModule;
+  try {
+    const modName = "playwright";
+    pw = (await import(modName)) as PlaywrightModule;
+  } catch {
+    throw new Error(
+      `Template "${template.name}" requires Playwright. Install it with:\n` +
+        `  npm install playwright\n` +
+        `  npx playwright install chromium`,
+    );
+  }
+
+  const browser = await pw.chromium.launch({ headless: true });
+  const context = await browser.newContext({
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  });
+  const page = await context.newPage();
+  try {
+    const partial = await template.playwrightExtract(page, url);
+    const rawHtml = await page.content();
+    const job: ScrapedJob = {
+      title: partial.title ?? "",
+      company: partial.company ?? "",
+      location: partial.location ?? "",
+      description: partial.description ?? "",
+      sourceUrl: url,
+      templateName: template.name,
+      extra: partial.extra ?? {},
+    };
+    return { job, rawHtml, status: 200 };
+  } finally {
+    await browser.close();
+  }
 }
 
 async function scrapeHttp(template: HttpTemplate, url: string): Promise<ScrapeResult> {
