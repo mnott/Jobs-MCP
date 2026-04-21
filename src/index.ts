@@ -76,8 +76,9 @@ const server = new McpServer(
       "- **Lever** (API) — `api.lever.co/v0/postings/{co}/{id}?mode=json`.",
       "- **Greenhouse** (API) — `boards-api.greenhouse.io/v1/boards/{co}/jobs/{id}`.",
       "- **Ashby** (API) — company board + UUID filter.",
+      "- **SmartRecruiters** (API) — `/v1/companies/{co}/postings/{id}`, all 4 JD sections.",
       "",
-      "Taleo, Avature, SmartRecruiters, SuccessFactors, JobUp, BambooHR land next.",
+      "Taleo, Avature, SuccessFactors, JobUp, BambooHR land next.",
     ].join("\n"),
   },
 );
