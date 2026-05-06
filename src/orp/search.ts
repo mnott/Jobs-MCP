@@ -48,6 +48,8 @@ export interface JobroomJobSummary {
   permanent: boolean;
   publishedDate: string;
   externalUrl: string | null;
+  /** Canonical viewer URL — falls back to job-room.ch /job-search/{id} when no externalUrl exists */
+  sourceUrl: string;
   sourceSystem: string;
 }
 
@@ -181,6 +183,7 @@ export async function searchJobs(
       permanent: employment?.permanent === true,
       publishedDate: ((ja.publication as Record<string, string>)?.startDate) || "",
       externalUrl: (jc?.externalUrl as string) || null,
+      sourceUrl: (jc?.externalUrl as string) || `https://www.job-room.ch/job-search/${ja.id}`,
       sourceSystem: ja.sourceSystem as string || "",
     };
   });
